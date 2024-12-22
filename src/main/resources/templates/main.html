@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Получение графика курса валюты</title>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1, shrink-to-fit=no" name="viewport">
+    <link href="#" rel="shortcut icon">
+    <link crossorigin="anonymous" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T"
+          rel="stylesheet" th:href="@{https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css}">
+
+    <style>
+        body {
+            font-family: sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            width: 80%;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input[type="text"], input[type="date"] {
+            width: calc(100% - 30px);
+            padding: 8px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+
+        select {
+            width: calc(100% - 30px);
+            padding: 8px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+
+        button {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+
+    <script crossorigin="anonymous"
+            integrity="sha384-tsQFqpEReu7ZLhBV2VZlAu7zcOV+rXbYlF2cqB8txI/8aZajjp4Bqd+V6D5IgvKT"
+            th:src="@{https://code.jquery.com/jquery-3.3.1.min.js}">
+    </script>
+</head>
+<body>
+<div class="container">
+    <h1>Получение графика курса валюты</h1>
+    <form>
+        <label for="currency">Валюта:</label>
+        <select id="currency" name="currency">
+            <option value="">Выберите валюту</option>
+        </select>
+
+        <script>
+            fetch('https://api.nbrb.by/exrates/currencies')
+                .then(response => response.json())
+                .then(data => {
+                    const selectElement = document.getElementById('currency');
+                    const uniqueCurrencies = new Map();
+
+                    data.forEach(currency => {
+                        if (!uniqueCurrencies.has(currency.Cur_Code)) {
+                            uniqueCurrencies.set(currency.Cur_Code, currency);
+                            const option = document.createElement('option');
+                            option.value = currency.Cur_ID;
+                            option.text = currency.Cur_Abbreviation + ' (' + currency.Cur_Name + ')';
+                            selectElement.appendChild(option);
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Ошибка при получении данных:', error);
+                });
+        </script>
+
+        <div class="mb-3">
+            <label for="dateFrom">
+                Дата от:
+            </label>
+            <input id="dateFrom" name="dateFrom" type="date">
+        </div>
+
+        <div class="mb-3">
+            <label for="dateTo">
+                Дата до:
+            </label>
+            <input id="dateTo" name="dateTo" type="date">
+        </div>
+
+        <button class="btn btn-success ml-2" id="fillButton" type="button">Выполнить</button>
+    </form>
+</div>
+
+<script>
+    const currency = document.getElementById("currency");
+    const dateFrom = document.getElementById("dateFrom");
+    const dateTo = document.getElementById("dateTo");
+
+    $(document).ready(function() {
+        $('#fillButton').click(fill);
+    });
+
+    async function fill() {
+        try {
+            const currencyId = currency.value;
+            const startDate = dateFrom.value + 'T00:00';
+            const endDate = dateTo.value + 'T00:00';
+            console.log("currencyId:", currency.value);
+            console.log("startDate:", dateFrom.value);
+            console.log("endDate:", dateTo.value);
+
+            // 1. Получаем список всех валют
+            const currencyList = await fetch('https://api.nbrb.by/exrates/currencies')
+                .then(response => response.json());
+
+            // 2. Находим валюты с таким же ParentID (это и есть критерий совпадения)
+            const selectedCurrency = currencyList.find(item => item.Cur_ID === parseInt(currencyId));
+            if (!selectedCurrency) {
+                throw new Error("Валюта не найдена"); //Обработка случая, когда валюта не найдена
+            }
+
+            const matchingCurrencies = currencyList.filter(item => item.Cur_ParentID === selectedCurrency.Cur_ParentID && item.Cur_ID !== selectedCurrency.Cur_ID);
+
+            // 3. Добавляем выбранную валюту в список для запроса данных
+            console.log("selectedCurrency", selectedCurrency)
+            matchingCurrencies.push(selectedCurrency);
+            console.log("matchingCurrencies", matchingCurrencies)
+            // 4. Получаем данные по динамике курса для каждой валюты
+            const allData = await Promise.all(matchingCurrencies.map(async (c) => {
+                const data = await fetch(`https://api.nbrb.by/exrates/rates/dynamics/${c.Cur_ID}?startdate=${startDate}&enddate=${endDate}`)
+                    .then(response => response.json());
+                return {Cur_ID: c.Cur_ID, data};
+            }));
+
+            // 5. Объединяем и сортируем данные
+            const mergedData = allData.reduce((acc, curr) => acc.concat(curr.data), []);
+            mergedData.sort((a, b) => new Date(a.Date) - new Date(b.Date));
+
+            // 6. Создаем график
+            const dates = mergedData.map(item => item.Date);
+            const rates = mergedData.map(item => item.Cur_OfficialRate);
+            console.log('Merged data:', mergedData); //проверка
+            new Chart("myChart", {
+                type: "line",
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        fill: false,
+                        lineTension: 0,
+                        backgroundColor: "rgba(0,0,255,1.0)",
+                        borderColor: "rgba(0,0,255,0.1)",
+                        data: rates
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    legend: { display: false },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                tooltipFormat: 'dd MMM yyyy'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error("Ошибка:", error);
+            // Обработка ошибок -  например, вывести сообщение об ошибке пользователю
+        }
+    }
+
+</script>
+
+<script crossorigin="anonymous"
+        integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
+        th:src="@{https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js}">
+</script>
+<canvas id="myChart" style="width:100%;"></canvas>
+</body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js"></script>
+</html>
