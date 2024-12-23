@@ -1,8 +1,10 @@
+
 <!DOCTYPE html>
-<html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:th="https://www.thymeleaf.org">
 
 <head>
-    <title>Получение графика курса валюты</title>
+    <title>График курса валют</title>
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1, shrink-to-fit=no" name="viewport">
     <link href="#" rel="shortcut icon">
@@ -17,38 +19,6 @@
             flex-direction: column;
         }
 
-        .container {
-            width: 80%;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        input[type="text"], input[type="date"] {
-            width: calc(100% - 30px);
-            padding: 8px;
-            margin-bottom: 10px;
-            box-sizing: border-box;
-        }
-
-        select {
-            width: calc(100% - 30px);
-            padding: 8px;
-            margin-bottom: 10px;
-            box-sizing: border-box;
-        }
-
-        button {
-            padding: 8px 15px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
     </style>
 
     <script crossorigin="anonymous"
@@ -58,145 +28,236 @@
 </head>
 <body>
 <div class="container">
-    <h1>Получение графика курса валюты</h1>
-    <form>
-        <label for="currency">Валюта:</label>
-        <select id="currency" name="currency">
-            <option value="">Выберите валюту</option>
-        </select>
+    <div class="mt-3">
+        <form>
+            <div class="form-group row mb-3">
+                <label class="col-2 col-form-label" for="currency">
+                    Валюта
+                </label>
+                <div class="col-6">
+                    <select class="w-100 p-1" id="currency" name="currency">
+                        <option value="">
+                            Выберите валюту
+                        </option>
+                    </select>
+                </div>
+            </div>
 
-        <script>
-            fetch('https://api.nbrb.by/exrates/currencies')
-                .then(response => response.json())
-                .then(data => {
-                    const selectElement = document.getElementById('currency');
-                    const uniqueCurrencies = new Map();
 
-                    data.forEach(currency => {
-                        if (!uniqueCurrencies.has(currency.Cur_Code)) {
-                            uniqueCurrencies.set(currency.Cur_Code, currency);
-                            const option = document.createElement('option');
-                            option.value = currency.Cur_ID;
-                            option.text = currency.Cur_Abbreviation + ' (' + currency.Cur_Name + ')';
-                            selectElement.appendChild(option);
-                        }
-                    });
-                })
-                .catch(error => {
-                    console.error('Ошибка при получении данных:', error);
-                });
-        </script>
+            <div class="form-group row mb-1">
+                <label class="col-2 col-form-label" for="dateFrom">
+                    Дата от
+                </label>
+                <div class="col-6">
+                    <input class="w-100 p-1" id="dateFrom" name="dateFrom" type="date">
+                </div>
+            </div>
 
-        <div class="mb-3">
-            <label for="dateFrom">
-                Дата от:
-            </label>
-            <input id="dateFrom" name="dateFrom" type="date">
-        </div>
+            <div class="form-group row mb-1">
+                <label class="col-2 col-form-label" for="dateTo">
+                    Дата до
+                </label>
+                <div class="col-6">
+                    <input class="w-100 p-1" id="dateTo" name="dateTo" type="date">
+                </div>
+            </div>
 
-        <div class="mb-3">
-            <label for="dateTo">
-                Дата до:
-            </label>
-            <input id="dateTo" name="dateTo" type="date">
-        </div>
-
-        <button class="btn btn-success ml-2" id="fillButton" type="button">Выполнить</button>
-    </form>
+            <div class="form-group row mb-2">
+                <div class="col-2"></div>
+                <div class="col-6 d-flex align-self-end justify-content-end">
+                    <button class="btn btn-success " id="submitButton" type="button">
+                        Выполнить
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div class="container-fluid">
+        <canvas class="w-100" id="myChart"></canvas>
+    </div>
 </div>
 
+<script crossorigin="anonymous"
+        integrity="sha512-hZf9Qhp3rlDJBvAKvmiG+goaaKRZA6LKUO35oK6EsM0/kjPK32Yw7URqrq3Q+Nvbbt8Usss+IekL7CRn83dYmw=="
+        th:src="@{https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js}">
+</script>
+
 <script>
-    const currency = document.getElementById("currency");
+    const currency = document.getElementById('currency');
     const dateFrom = document.getElementById("dateFrom");
     const dateTo = document.getElementById("dateTo");
 
-    $(document).ready(function() {
-        $('#fillButton').click(fill);
+
+    const dateNow = new Date()
+    const dateLastYear = new Date()
+    dateLastYear.setFullYear(dateNow.getFullYear() - 1);
+    dateFrom.setAttribute("min", dateLastYear.toISOString().split("T")[0])
+    dateFrom.setAttribute("max", dateNow.toISOString().split("T")[0])
+    dateTo.setAttribute("min", dateLastYear.toISOString().split("T")[0])
+    dateTo.setAttribute("max", dateNow.toISOString().split("T")[0])
+
+    $(document).ready(function () {
+        $('#submitButton').click(function (e) {
+            if (!currency.value || !dateFrom.value || !dateTo.value) {
+                e.preventDefault()
+            } else {
+                drawChart()
+            }
+        });
     });
 
-    async function fill() {
-        try {
-            const currencyId = currency.value;
-            const startDate = dateFrom.value + 'T00:00';
-            const endDate = dateTo.value + 'T00:00';
-            console.log("currencyId:", currency.value);
-            console.log("startDate:", dateFrom.value);
-            console.log("endDate:", dateTo.value);
+    let currencies = []
+    let chart = null
 
-            // 1. Получаем список всех валют
-            const currencyList = await fetch('https://api.nbrb.by/exrates/currencies')
-                .then(response => response.json());
+    getDataAndBuildOptions()
 
-            // 2. Находим валюты с таким же ParentID (это и есть критерий совпадения)
-            const selectedCurrency = currencyList.find(item => item.Cur_ID === parseInt(currencyId));
-            if (!selectedCurrency) {
-                throw new Error("Валюта не найдена"); //Обработка случая, когда валюта не найдена
+    async function getDataAndBuildOptions() {
+        $.getJSON('https://api.nbrb.by/exrates/currencies').done(function (data) {
+            if (data) {
+                currencies = data;
+                currencies = getCurrenciesFromTo(currencies, dateLastYear, dateNow)
+                buildOptions(currencies)
             }
+        }).fail(function (data) {
+            console.log('Error occurred with '+ 'https://api.nbrb.by/exrates/currencies')
+        })
+    }
 
-            const matchingCurrencies = currencyList.filter(item => item.Cur_ParentID === selectedCurrency.Cur_ParentID && item.Cur_ID !== selectedCurrency.Cur_ID);
+    function getCurrenciesFromTo(currencies, start, end){
+        const realRequests = getRequests(currencies, start, end, false)
+        const realIds = realRequests.map(r => r.cur_id)
+        return currencies.filter(c => realIds.findIndex(e=>e === c.Cur_ID) >= 0)
+    }
 
-            // 3. Добавляем выбранную валюту в список для запроса данных
-            console.log("selectedCurrency", selectedCurrency)
-            matchingCurrencies.push(selectedCurrency);
-            console.log("matchingCurrencies", matchingCurrencies)
-            // 4. Получаем данные по динамике курса для каждой валюты
-            const allData = await Promise.all(matchingCurrencies.map(async (c) => {
-                const data = await fetch(`https://api.nbrb.by/exrates/rates/dynamics/${c.Cur_ID}?startdate=${startDate}&enddate=${endDate}`)
-                    .then(response => response.json());
-                return {Cur_ID: c.Cur_ID, data};
+    function buildOptions(currencies) {
+        const currencyMap = new Map();
+        currencies.forEach((c) => currencyMap.set(
+            c.Cur_ParentID,
+            {
+                parentId: c.Cur_ParentID,
+                abbr: c.Cur_Abbreviation,
+                name: c.Cur_Name
             }));
+        const options = Array.from(currencyMap.values()).sort((a, b) => a['abbr'].localeCompare(b['abbr']))
+        options.forEach(opt => {
+            const elem = document.createElement('option');
+            elem.value = opt.parentId;
+            elem.text = opt.abbr + ' (' + opt.name + ')';
+            currency.appendChild(elem);
+        })
+    }
 
-            // 5. Объединяем и сортируем данные
-            const mergedData = allData.reduce((acc, curr) => acc.concat(curr.data), []);
-            mergedData.sort((a, b) => new Date(a.Date) - new Date(b.Date));
+    async function drawChart() {
+        destroyChart()
+        const parentId = parseInt(currency.value);
+        const startDate = new Date(dateFrom.value);
+        const endDate = new Date(dateTo.value);
 
-            // 6. Создаем график
-            const dates = mergedData.map(item => item.Date);
-            const rates = mergedData.map(item => item.Cur_OfficialRate);
-            console.log('Merged data:', mergedData); //проверка
-            new Chart("myChart", {
-                type: "line",
-                data: {
-                    labels: dates,
-                    datasets: [{
-                        fill: false,
-                        lineTension: 0,
-                        backgroundColor: "rgba(0,0,255,1.0)",
-                        borderColor: "rgba(0,0,255,0.1)",
-                        data: rates
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    legend: { display: false },
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'day',
-                                tooltipFormat: 'dd MMM yyyy'
-                            }
-                        },
-                        y: {
-                            beginAtZero: true
+        const selected = getCurrenciesByParentId(parentId);
+        const requests = getRequests(selected, startDate, endDate, true)
+        const allData = await Promise.all(requests.map(async (c) => {
+            const data = await fetch(`https://api.nbrb.by/exrates/rates/dynamics/${c.cur_id}?startdate=${c.startdate.toDateString()}&enddate=${c.enddate.toDateString()}`)
+                .then(response => response.json());
+            return {Cur_ID: c.cur_id, data};
+        }));
+
+        // 5. Объединяем и сортируем данные
+        const mergedData = allData.reduce((acc, curr) => acc.concat(curr.data), []);
+        mergedData.sort((a, b) => compareDateISOStringNatural(a.Date, b.Date));
+
+        // 6. Создаем график
+        const dates = mergedData.map(i => new Date(i.Date).toISOString().split("T")[0]);
+        const rates = mergedData.map(i => i.Cur_OfficialRate);
+        chart = new Chart("myChart", {
+            type: "line",
+            data: {
+                labels: dates,
+                datasets: [{
+                    fill: false,
+                    lineTension: 0,
+                    backgroundColor: "rgba(0,0,255,1.0)",
+                    borderColor: "rgba(0,0,255,0.1)",
+                    data: rates
+                }]
+            },
+            options: {
+                responsive: true,
+                legend: {display: false},
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                            tooltipFormat: 'dd MMM yyyy'
                         }
+                    },
+                    y: {
+                        beginAtZero: true
                     }
                 }
-            });
+            }
+        });
+    }
 
-        } catch (error) {
-            console.error("Ошибка:", error);
-            // Обработка ошибок -  например, вывести сообщение об ошибке пользователю
+    function destroyChart() {
+        if (!!chart) {
+            chart.destroy()
         }
     }
 
+    function getCurrenciesByParentId(parentId) {
+        return currencies.filter(c => c.Cur_ParentID === parentId)
+    }
+
+    function getRequests(currencies, start, end, isOnce) {
+        let requests = [];
+        for (let i = 0; i < currencies.length; i++) {
+            const c = currencies[i];
+            const startC = new Date(c.Cur_DateStart);
+            const endC = new Date(c.Cur_DateEnd);
+            if (startC < start && endC < start) {
+                continue;
+            }
+            if (startC > end && endC > end) {
+                continue;
+            }
+            if (startC <= start && end <= endC) {
+                if(isOnce){
+                    requests = [{cur_id: c.Cur_ID, startdate: start, enddate: end}];
+                    break;
+                }else{
+                    requests.push({cur_id: c.Cur_ID, startdate: start, enddate: end});
+                    continue;
+                }
+            }
+            if (start < startC && endC < end) {
+                requests.push({cur_id: c.Cur_ID, startdate: startC, enddate: endC});
+                continue;
+            }
+            if (startC <= start && start <= endC) {
+                requests.push({cur_id: c.Cur_ID, startdate: start, enddate: endC});
+                continue;
+            }
+            if (startC <= end && end <= endC) {
+                requests.push({cur_id: c.Cur_ID, startdate: startC, enddate: end});
+            }
+        }
+        return requests;
+    }
+
+    function compareDateNatural(a, b) {
+        return (a > b) - (a < b)
+    }
+
+    function compareDateISOStringNatural(a, b) {
+        return compareDateNatural(new Date(a), new Date(b))
+    }
 </script>
 
 <script crossorigin="anonymous"
         integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
         th:src="@{https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js}">
 </script>
-<canvas id="myChart" style="width:100%;"></canvas>
 </body>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js"></script>
+
 </html>
